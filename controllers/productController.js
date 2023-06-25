@@ -1,5 +1,11 @@
+const ProductSchema = require("../schemas/ProductSchema");
 const { Product } = require("../schemas/ProductSchema");
 const Project = require("../schemas/ProjectSchema");
+const cron = require("node-cron");
+const User = require("../schemas/UserSchema");
+const nodemailer = require("nodemailer");
+const createCsvWriter = require("csv-writer").createObjectCsvWriter;
+require("isomorphic-fetch");
 
 exports.createProduct = async (req, res) => {
   const {
@@ -49,6 +55,18 @@ exports.createProduct = async (req, res) => {
     });
 
     const newProduct = await product.save();
+
+    cron.schedule("0 5 * * *", async () => {
+      const weatherResponse = await fetch(
+        `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
+          product.lon
+        }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
+          endDate.toISOString().split("T")[0]
+        }&key=${process.env.WEATHERBIT_API_KEY}`
+      );
+      const responseJson = await weatherResponse.json();
+      const dataResponse = responseJson.data;
+    });
 
     const associatedProject = await Project.findById(projectId);
 
@@ -154,3 +172,171 @@ exports.deleteProduct = async (req, res) => {
     });
   }
 };
+
+exports.getSingleProductData = async (req, res) => {
+  const productId = req.params.id;
+  const userId = req.user.id;
+
+  const product = await Product.findById(productId);
+
+  try {
+    getGeneratedElectricity(productId, userId);
+    res.status(200).json({
+      status: "success",
+      message: `Electricity data is generated for ${product.productName}`,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+};
+
+function dateIntervalsCreation() {
+  let todaydate = new Date();
+  let currdate = todaydate.getDate();
+  let month = todaydate.getMonth() + 1;
+  let year = todaydate.getFullYear();
+  let dateBeforeThirtyDays = new Date();
+
+  dateBeforeThirtyDays.setDate(todaydate.getDate() - 30);
+
+  let getdate = dateBeforeThirtyDays.getDate();
+  let getmonth = dateBeforeThirtyDays.getMonth() + 1;
+  let getyear = dateBeforeThirtyDays.getFullYear();
+
+  let enddate = year + "-" + month + "-" + currdate;
+
+  let startdate = getyear + "-" + getmonth + "-" + getdate;
+
+  return [startdate, enddate];
+}
+
+const link = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "sarojsaroj390@gmail.com",
+    pass: "jelswsffzvptedwn",
+  },
+});
+
+async function getGeneratedElectricity(prodId, userId) {
+  const product = await Product.findById(prodId);
+
+  const cdate = dateIntervalsCreation();
+  function isThirty(productCreatedDate) {
+    let isThirty = false;
+    const cdate = dateIntervalsCreation();
+
+    console.log(cdate);
+
+    let currentDate = new Date(cdate[0]);
+    const prodDate = new Date(productCreatedDate);
+
+    const differenceInDates = prodDate.getTime() - currentDate.getTime() + 1;
+
+    const daysDiff = Math.floor(differenceInDates / (1000 * 60 * 60 * 24));
+
+    if (daysDiff === 30) {
+      isThirty = true;
+    }
+    return true;
+  }
+
+  // const projectlist = await Project.find({ isactive: true });
+
+  const dateOfProductCreation = product.createdAt;
+
+  const crdate = dateOfProductCreation.toISOString().split("T")[0];
+
+  console.log(crdate);
+
+  // console.log(typeof crdate);
+
+  const datechk = isThirty(crdate);
+
+  const user = await User.find({ _id: userId });
+
+  // for (elem of productlist) {
+  if (datechk === true) {
+    // const deactivprod = await Product.updateMany({_id : elem._id},{isactive : false})
+  }
+
+  if (datechk === true) {
+    // const deacticproj = await Project.updateMany({_id : proj._id},{isactive:false})
+    sendLast30DaysProjectReports(product, cdate, user[0].email);
+  }
+}
+
+function convertJsonToCsv(jsonArray, filename) {
+  if (!jsonArray.length) {
+    return null;
+  }
+
+  const csvWriter = createCsvWriter({
+    path: filename,
+    header: Object.keys(jsonArray[0]).map(key => ({ id: key, title: key })),
+  });
+
+  return csvWriter.writeRecords(jsonArray);
+}
+
+async function sendLast30DaysProjectReports(product, date, email) {
+  const thirtydays = [];
+
+  const startDate = new Date(date[0]);
+  const endDate = new Date(date[1]);
+
+  const weatherResponse = await fetch(
+    `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
+      product.lon
+    }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
+      endDate.toISOString().split("T")[0]
+    }&key=${process.env.WEATHERBIT_API_KEY}`
+  );
+  const responseJson = await weatherResponse.json();
+  const dataResponse = responseJson.data;
+
+  dataResponse.forEach(data => {
+    const cdate = new Date(data.max_temp_ts * 1000);
+    const sunHours = cdate.getHours();
+    const elec = (data.max_dni * product.area * sunHours) / 1000;
+    const electricityResult = {
+      productname: product.productName,
+      irradiance: data.max_dni,
+      date: data.datetime,
+      electricity: elec,
+    };
+    thirtydays.push(electricityResult);
+  });
+
+  let filename = `${product.productName}.csv`;
+
+  const csvContent = convertJsonToCsv(thirtydays, filename);
+  const attachment = {
+    filename: filename,
+    path: filename,
+    content: csvContent,
+  };
+
+  const mailOptions = {
+    from: "sarojsaroj390@gmail.com",
+    to: email,
+    subject: `${product.productName} electricity generation reports`,
+    text: "Sending this email after generating the report",
+    attachments: [attachment],
+  };
+
+  link.sendMail(mailOptions, function (err, info) {
+    if (err) {
+      console.log(err);
+    } else {
+      console.log("Email sent: " + info.response);
+    }
+  });
+
+  await Product.findByIdAndUpdate(product._id, {
+    isReadOnly: true,
+  });
+}

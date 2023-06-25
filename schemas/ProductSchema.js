@@ -37,6 +37,26 @@ const productSchema = new mongoose.Schema(
       required: true,
     },
 
+    solarCalculiteResults: [
+      {
+        date: {
+          type: String,
+        },
+        solarIrradiance: {
+          type: Number,
+        },
+        panelArea: {
+          type: Number,
+        },
+        sunHours: {
+          type: Number,
+        },
+        electricityProduced: {
+          type: Number,
+        },
+      },
+    ],
+
     // project: {
     //   type: mongoose.Schema.Types.ObjectId,
     //   ref: "Project",

@@ -19,6 +19,10 @@ const projectSchema = new mongoose.Schema(
       required: true,
       ref: "User",
     },
+    isactive: {
+      type: Boolean,
+      default: true,
+    },
     products: [
       {
         type: mongoose.Schema.Types.ObjectId,
