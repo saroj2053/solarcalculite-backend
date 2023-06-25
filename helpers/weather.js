@@ -39,6 +39,6 @@ const fetchWeatherData = () => {
   request.end();
 };
 
-cron.schedule("*/10 * * * * *", () => {
-  // fetchWeatherData();
-});
+// cron.schedule("*/10 * * * * *", () => {
+//   // fetchWeatherData();
+// });

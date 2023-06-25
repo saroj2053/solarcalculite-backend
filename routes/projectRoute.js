@@ -25,4 +25,10 @@ router
   .patch(authController.isAuthenticatedUser, projectController.updateProject)
   .delete(authController.isAuthenticatedUser, projectController.deleteProject);
 
+router.get(
+  "/:id/generateReport",
+  authController.isAuthenticatedUser,
+  projectController.generateProjectReport
+);
+
 module.exports = router;

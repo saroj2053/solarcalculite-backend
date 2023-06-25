@@ -11,7 +11,7 @@ exports.createProduct = async (req, res) => {
   const {
     productName,
     area,
-    peekPower,
+    peakPower,
     orientation,
     tilt,
     lon,
@@ -25,7 +25,7 @@ exports.createProduct = async (req, res) => {
   if (!area) {
     return res.status(400).json({ message: "Area is required" });
   }
-  if (!peekPower) {
+  if (!peakPower) {
     return res.status(400).json({ message: "Peek Power is required" });
   }
   if (!orientation) {
@@ -47,7 +47,7 @@ exports.createProduct = async (req, res) => {
     const product = new Product({
       productName,
       area,
-      peekPower,
+      peakPower,
       orientation,
       tilt,
       lon,
@@ -56,17 +56,17 @@ exports.createProduct = async (req, res) => {
 
     const newProduct = await product.save();
 
-    cron.schedule("0 5 * * *", async () => {
-      const weatherResponse = await fetch(
-        `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
-          product.lon
-        }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
-          endDate.toISOString().split("T")[0]
-        }&key=${process.env.WEATHERBIT_API_KEY}`
-      );
-      const responseJson = await weatherResponse.json();
-      const dataResponse = responseJson.data;
-    });
+    // cron.schedule("0 5 * * *", async () => {
+    //   const weatherResponse = await fetch(
+    //     `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
+    //       product.lon
+    //     }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
+    //       endDate.toISOString().split("T")[0]
+    //     }&key=${process.env.WEATHERBIT_API_KEY}`
+    //   );
+    //   const responseJson = await weatherResponse.json();
+    //   const dataResponse = responseJson.data;
+    // });
 
     const associatedProject = await Project.findById(projectId);
 
@@ -95,14 +95,14 @@ exports.createProduct = async (req, res) => {
 
 exports.updateProduct = async (req, res) => {
   const productId = req.params.id;
-  const { productName, area, peekPower, orientation, tilt, lon, lat } =
+  const { productName, area, peakPower, orientation, tilt, lon, lat } =
     req.body;
 
   try {
     const newValues = {
       productName,
       area,
-      peekPower,
+      peakPower,
       orientation,
       tilt,
       lon,
@@ -194,23 +194,26 @@ exports.getSingleProductData = async (req, res) => {
 };
 
 function dateIntervalsCreation() {
-  let todaydate = new Date();
-  let currdate = todaydate.getDate();
-  let month = todaydate.getMonth() + 1;
-  let year = todaydate.getFullYear();
+  let todayDate = new Date();
+  let year = todayDate.getFullYear(); //year
+  let month = todayDate.getMonth() + 1; // month
+  let date = todayDate.getDate(); // date
+
+  console.log(year, month, date);
+
   let dateBeforeThirtyDays = new Date();
+  dateBeforeThirtyDays.setDate(todayDate.getDate() - 30);
+  let getYear = dateBeforeThirtyDays.getFullYear();
+  let getMonth = dateBeforeThirtyDays.getMonth() + 1;
+  let getDate = dateBeforeThirtyDays.getDate();
 
-  dateBeforeThirtyDays.setDate(todaydate.getDate() - 30);
+  console.log(getYear, getMonth, getDate);
 
-  let getdate = dateBeforeThirtyDays.getDate();
-  let getmonth = dateBeforeThirtyDays.getMonth() + 1;
-  let getyear = dateBeforeThirtyDays.getFullYear();
+  let end_date = year + "-" + month + "-" + date;
 
-  let enddate = year + "-" + month + "-" + currdate;
+  let start_date = getYear + "-" + getMonth + "-" + getDate;
 
-  let startdate = getyear + "-" + getmonth + "-" + getdate;
-
-  return [startdate, enddate];
+  return [start_date, end_date];
 }
 
 const link = nodemailer.createTransport({
@@ -224,27 +227,36 @@ const link = nodemailer.createTransport({
 async function getGeneratedElectricity(prodId, userId) {
   const product = await Product.findById(prodId);
 
-  const cdate = dateIntervalsCreation();
+  const date_interval = dateIntervalsCreation();
   function isThirty(productCreatedDate) {
     let isThirty = false;
-    const cdate = dateIntervalsCreation();
 
-    console.log(cdate);
+    function parseDateString(dateString) {
+      const parts = dateString.split("-");
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      return new Date(year, month, day);
+    }
+    const date_interval = dateIntervalsCreation();
 
-    let currentDate = new Date(cdate[0]);
-    const prodDate = new Date(productCreatedDate);
+    console.log(date_interval);
 
-    const differenceInDates = prodDate.getTime() - currentDate.getTime() + 1;
+    let currentDate = parseDateString(date_interval[1]);
+    console.log(currentDate);
 
-    const daysDiff = Math.floor(differenceInDates / (1000 * 60 * 60 * 24));
+    let createdProductAt = parseDateString(productCreatedDate);
 
-    if (daysDiff === 30) {
+    const differenceInMilliseconds = currentDate - createdProductAt;
+    const differenceInDays = differenceInMilliseconds / (1000 * 60 * 60 * 24);
+
+    console.log(differenceInDays);
+
+    if (differenceInDays === 30) {
       isThirty = true;
     }
     return true;
   }
-
-  // const projectlist = await Project.find({ isactive: true });
 
   const dateOfProductCreation = product.createdAt;
 
@@ -254,18 +266,19 @@ async function getGeneratedElectricity(prodId, userId) {
 
   // console.log(typeof crdate);
 
-  const datechk = isThirty(crdate);
+  const dateCheck = isThirty(crdate);
+  console.log(dateCheck);
 
   const user = await User.find({ _id: userId });
 
   // for (elem of productlist) {
-  if (datechk === true) {
+  if (dateCheck === true) {
     // const deactivprod = await Product.updateMany({_id : elem._id},{isactive : false})
   }
 
-  if (datechk === true) {
+  if (dateCheck === true) {
     // const deacticproj = await Project.updateMany({_id : proj._id},{isactive:false})
-    sendLast30DaysProjectReports(product, cdate, user[0].email);
+    sendLast30DaysProjectReports(product, date_interval, user[0].email);
   }
 }
 
@@ -299,8 +312,8 @@ async function sendLast30DaysProjectReports(product, date, email) {
   const dataResponse = responseJson.data;
 
   dataResponse.forEach(data => {
-    const cdate = new Date(data.max_temp_ts * 1000);
-    const sunHours = cdate.getHours();
+    const date_interval = new Date(data.max_temp_ts * 1000);
+    const sunHours = date_interval.getHours();
     const elec = (data.max_dni * product.area * sunHours) / 1000;
     const electricityResult = {
       productname: product.productName,

@@ -4,7 +4,7 @@ exports.createTemplate = async (req, res) => {
   const {
     productName,
     ownedByCompany,
-    peekPower,
+    peakPower,
     area,
     orientation,
     lat,
@@ -14,7 +14,7 @@ exports.createTemplate = async (req, res) => {
   if (!productName) {
     return res.status(400).json({ message: "Product Name is required" });
   }
-  if (!peekPower) {
+  if (!peakPower) {
     return res.status(400).json({ message: "Product Peek Power is required" });
   }
   if (!area) {
@@ -36,7 +36,7 @@ exports.createTemplate = async (req, res) => {
   const templateProduct = new Template({
     productName,
     ownedByCompany,
-    peekPower,
+    peakPower,
     area,
     orientation,
     lat,

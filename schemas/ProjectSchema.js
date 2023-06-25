@@ -19,7 +19,7 @@ const projectSchema = new mongoose.Schema(
       required: true,
       ref: "User",
     },
-    isactive: {
+    isActive: {
       type: Boolean,
       default: true,
     },

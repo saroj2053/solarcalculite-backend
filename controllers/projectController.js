@@ -128,35 +128,34 @@ exports.updateProject = async (req, res) => {
   }
 };
 exports.deleteProject = async (req, res) => {
-  // // try {
-  // //   //finding the project to be deleted
-  // //   const project = await Project.findById(req.params.id);
-  // //   if (!project) {
-  // //     return res.status(404).json({
-  // //       status: "fail",
-  // //       message: "Project not found",
-  // //     });
-  // //   }
+  try {
+    //finding the project to be deleted
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Project not found",
+      });
+    }
+    const productIds = project.products;
+    // Deleting particular project
+    await project.deleteOne();
+    // Deleting the associated products
+    await Product.deleteMany({ _id: { $in: productIds } });
+    res.status(200).json({
+      status: "success",
+      message: "Project deleted successfully",
+      data: null,
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      message: err,
+    });
+  }
+};
 
-  // //   const productIds = project.products;
-
-  // //   // Deleting particular project
-  // //   await project.deleteOne();
-
-  // //   // Deleting the associated products
-  // //   await Product.deleteMany({ _id: { $in: productIds } });
-
-  // //   res.status(200).json({
-  // //     status: "success",
-  // //     message: "Project deleted successfully",
-  // //     data: null,
-  // //   });
-  // // } catch (err) {
-  // //   res.status(500).json({
-  // //     status: "error",
-  // //     message: err,
-  // //   });
-  // }
+exports.generateProjectReport = () => {
   popcorn();
   console.log("popcorn called");
 };
@@ -211,7 +210,7 @@ async function popcorn() {
     return true;
   }
 
-  const projectlist = await Project.find({ isactive: true });
+  const projectlist = await Project.find({ isActive: true });
 
   async function processProject(proj) {
     const dateOfProjectCreation = proj.createdAt;
@@ -228,7 +227,7 @@ async function popcorn() {
     console.log(user);
 
     const prodidlist = await Project.find(
-      { _id: proj._id, isactive: true },
+      { _id: proj._id, isActive: true },
       { projection: { products: 1 } }
     ).populate("products");
 
@@ -249,7 +248,7 @@ async function popcorn() {
 
   async function processProjects() {
     for (const proj of projectlist) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
       await processProject(proj);
     }
@@ -264,7 +263,7 @@ function convertJsonToCsv(jsonArray, filename) {
   }
 
   const csvWriter = createCsvWriter({
-    path: filename, // Output file path
+    path: filename,
     header: Object.keys(jsonArray[0]).map(key => ({ id: key, title: key })),
   });
 
@@ -294,6 +293,7 @@ async function sendLast30DaysProjectReports(
     );
     const newres = await weatherResponse.json();
     const dataResponse = newres.data;
+    console.log(dataResponse);
 
     dataResponse.forEach(data => {
       const cdate = new Date(data.max_temp_ts * 1000);
