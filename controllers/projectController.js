@@ -2,6 +2,7 @@ const Project = require("../schemas/ProjectSchema");
 const { cloudinary } = require("../cloudinary/index");
 const { Product, Template } = require("../schemas/ProductSchema");
 const User = require("../schemas/UserSchema");
+const { dateIntervalsCreation } = require("../helpers/weather");
 const nodemailer = require("nodemailer");
 const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 require("isomorphic-fetch");
@@ -97,6 +98,7 @@ exports.showProject = async (req, res) => {
     });
   }
 };
+
 exports.updateProject = async (req, res) => {
   const { title, description } = req.body;
   const author = req.user.id;
@@ -126,6 +128,7 @@ exports.updateProject = async (req, res) => {
     });
   }
 };
+
 exports.deleteProject = async (req, res) => {
   try {
     //finding the project to be deleted
@@ -155,34 +158,17 @@ exports.deleteProject = async (req, res) => {
 };
 
 exports.generateProjectReport = () => {
-  popcorn();
-  console.log("popcorn called");
+  try {
+    popcorn();
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      message: "Something went wrong",
+    });
+  }
 };
 
-function dateIntervalsCreation() {
-  let todayDate = new Date();
-  let year = todayDate.getFullYear(); //year
-  let month = todayDate.getMonth() + 1; // month
-  let date = todayDate.getDate(); // date
-
-  console.log(year, month, date);
-
-  let dateBeforeThirtyDays = new Date();
-  dateBeforeThirtyDays.setDate(todayDate.getDate() - 30);
-  let getYear = dateBeforeThirtyDays.getFullYear();
-  let getMonth = dateBeforeThirtyDays.getMonth() + 1;
-  let getDate = dateBeforeThirtyDays.getDate();
-
-  console.log(getYear, getMonth, getDate);
-
-  let end_date = year + "-" + month + "-" + date;
-
-  let start_date = getYear + "-" + getMonth + "-" + getDate;
-
-  return [start_date, end_date];
-}
-
-const link = nodemailer.createTransport({
+const emailLink = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "sarojsaroj390@gmail.com",
@@ -213,7 +199,7 @@ async function popcorn() {
     return true;
   }
 
-  const projectlist = await Project.find({ isActive: true });
+  const projectlist = await Project.findById(req.params.id);
 
   async function processProject(proj) {
     const dateOfProjectCreation = proj.createdAt;
@@ -287,12 +273,6 @@ async function sendLast30DaysProjectReports(
   let csvpaths = [];
   for (let product of activeProductList) {
     const thirtydays = [];
-    // const endDate = new Date(date[0]); // Current date
-    // const startDate = new Date(date[0]); // Start with the current date
-    // startDate.setDate(startDate.getDate() - 30); // Subtract 30 days
-
-    // const startDateISO = startDate.toISOString().split("T")[0];
-    // const endDateISO = endDate.toISOString().split("T")[0];
 
     const weatherResponse = await fetch(
       `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${product.lon}&start_date=${date[0]}&end_date=${date[1]}&key=${process.env.WEATHERBIT_API_KEY}`
@@ -346,7 +326,7 @@ async function sendLast30DaysProjectReports(
     attachments: attachments,
   };
 
-  link.sendMail(mailOptions, function (err, info) {
+  emailLink.sendMail(mailOptions, function (err, info) {
     if (err) {
       console.log(err);
     } else {
