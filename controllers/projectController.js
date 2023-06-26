@@ -7,11 +7,10 @@ const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 require("isomorphic-fetch");
 
 exports.getAllProjects = async (req, res) => {
-  console.log(req.user);
   const id = req.user.id;
   try {
     const projects = await Project.find({ author: id }).sort({ createdAt: -1 });
-    console.log(projects);
+
     if (projects) {
       res.status(200).json({
         projects,
@@ -160,23 +159,27 @@ exports.generateProjectReport = () => {
   console.log("popcorn called");
 };
 
-function diffdate() {
-  let todaydate = new Date();
-  let currdate = todaydate.getDate() - 1;
-  let month = todaydate.getMonth() + 1;
-  let year = todaydate.getFullYear();
-  let dateafterthirtydays = new Date(
-    new Date().setDate(todaydate.getDate() - 30)
-  );
+function dateIntervalsCreation() {
+  let todayDate = new Date();
+  let year = todayDate.getFullYear(); //year
+  let month = todayDate.getMonth() + 1; // month
+  let date = todayDate.getDate(); // date
 
-  console.log(dateafterthirtydays);
-  let getdate = dateafterthirtydays.getDate();
-  let getmonth = dateafterthirtydays.getMonth() + 1;
-  let getyear = dateafterthirtydays.getFullYear();
-  let enddate = year + "-" + month + "-" + currdate;
-  let startdate = getyear + "-" + getmonth + "-" + getdate;
-  console.log(startdate);
-  return [startdate, enddate];
+  console.log(year, month, date);
+
+  let dateBeforeThirtyDays = new Date();
+  dateBeforeThirtyDays.setDate(todayDate.getDate() - 30);
+  let getYear = dateBeforeThirtyDays.getFullYear();
+  let getMonth = dateBeforeThirtyDays.getMonth() + 1;
+  let getDate = dateBeforeThirtyDays.getDate();
+
+  console.log(getYear, getMonth, getDate);
+
+  let end_date = year + "-" + month + "-" + date;
+
+  let start_date = getYear + "-" + getMonth + "-" + getDate;
+
+  return [start_date, end_date];
 }
 
 const link = nodemailer.createTransport({
@@ -188,10 +191,10 @@ const link = nodemailer.createTransport({
 });
 
 async function popcorn() {
-  const cdate = diffdate();
+  const cdate = dateIntervalsCreation();
   function isThirty(productCreatedDate) {
     let isThirty = false;
-    const cdate = diffdate();
+    const cdate = dateIntervalsCreation();
 
     console.log(cdate);
     let currentDate = new Date(cdate[0]);
@@ -231,9 +234,12 @@ async function popcorn() {
       { projection: { products: 1 } }
     ).populate("products");
 
-    console.log(prodidlist[0].products);
-
     let productlist = [...prodidlist[0].products];
+    const activeProducts = productlist.filter(product => {
+      return product.isReadOnly !== true;
+    });
+
+    console.log(activeProducts);
 
     // for (elem of productlist) {
     if (datechk === true) {
@@ -242,7 +248,7 @@ async function popcorn() {
 
     if (datechk === true) {
       // const deacticproj = await Project.updateMany({_id : proj._id},{isactive:false})
-      sendLast30DaysProjectReports(proj, productlist, cdate, user[0].email);
+      sendLast30DaysProjectReports(proj, activeProducts, cdate, user[0].email);
     }
   }
 
@@ -291,11 +297,11 @@ async function sendLast30DaysProjectReports(
     const weatherResponse = await fetch(
       `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${product.lon}&start_date=${date[0]}&end_date=${date[1]}&key=${process.env.WEATHERBIT_API_KEY}`
     );
-    const newres = await weatherResponse.json();
-    const dataResponse = newres.data;
-    console.log(dataResponse);
+    const weatherData = await weatherResponse.json();
+    const dailyData = weatherData.data;
+    console.log(dailyData);
 
-    dataResponse.forEach(data => {
+    for (const data of dailyData) {
       const cdate = new Date(data.max_temp_ts * 1000);
       const sunHours = cdate.getHours();
       const elec = (data.max_dni * product.area * sunHours) / 1000;
@@ -305,10 +311,11 @@ async function sendLast30DaysProjectReports(
         "Sun Hours": sunHours,
         date: data.datetime,
         electricity: elec,
-        "Product Location": `${newres.city_name} ${newres.country_code}`,
+        "Product Location": `${weatherData.city_name}`,
+        country_code: `${weatherData.country_code}`,
       };
       thirtydays.push(electricityResult);
-    });
+    }
 
     let filename = `${product.productName}.csv`;
 
@@ -331,7 +338,7 @@ async function sendLast30DaysProjectReports(
     attachments.push(attachment);
   }
 
-  var mailop = {
+  var mailOptions = {
     from: "sarojsaroj390@gmail.com",
     to: `${email}`,
     subject: `${title} electricty generation reports`,
@@ -339,7 +346,7 @@ async function sendLast30DaysProjectReports(
     attachments: attachments,
   };
 
-  link.sendMail(mailop, function (err, info) {
+  link.sendMail(mailOptions, function (err, info) {
     if (err) {
       console.log(err);
     } else {

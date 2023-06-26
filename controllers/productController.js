@@ -3,6 +3,7 @@ const { Product } = require("../schemas/ProductSchema");
 const Project = require("../schemas/ProjectSchema");
 const cron = require("node-cron");
 const User = require("../schemas/UserSchema");
+const { dateIntervalsCreation } = require("../helpers/weather");
 const nodemailer = require("nodemailer");
 const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 require("isomorphic-fetch");
@@ -193,29 +194,6 @@ exports.getSingleProductData = async (req, res) => {
   }
 };
 
-function dateIntervalsCreation() {
-  let todayDate = new Date();
-  let year = todayDate.getFullYear(); //year
-  let month = todayDate.getMonth() + 1; // month
-  let date = todayDate.getDate(); // date
-
-  console.log(year, month, date);
-
-  let dateBeforeThirtyDays = new Date();
-  dateBeforeThirtyDays.setDate(todayDate.getDate() - 30);
-  let getYear = dateBeforeThirtyDays.getFullYear();
-  let getMonth = dateBeforeThirtyDays.getMonth() + 1;
-  let getDate = dateBeforeThirtyDays.getDate();
-
-  console.log(getYear, getMonth, getDate);
-
-  let end_date = year + "-" + month + "-" + date;
-
-  let start_date = getYear + "-" + getMonth + "-" + getDate;
-
-  return [start_date, end_date];
-}
-
 const link = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -228,7 +206,8 @@ async function getGeneratedElectricity(prodId, userId) {
   const product = await Product.findById(prodId);
 
   const date_interval = dateIntervalsCreation();
-  function isThirty(productCreatedDate) {
+
+  function isTargetDaysAchieved(productCreatedDate) {
     let isThirty = false;
 
     function parseDateString(dateString) {
@@ -266,7 +245,7 @@ async function getGeneratedElectricity(prodId, userId) {
 
   // console.log(typeof crdate);
 
-  const dateCheck = isThirty(crdate);
+  const dateCheck = isTargetDaysAchieved(crdate);
   console.log(dateCheck);
 
   const user = await User.find({ _id: userId });
@@ -318,8 +297,11 @@ async function sendLast30DaysProjectReports(product, date, email) {
     const electricityResult = {
       productname: product.productName,
       irradiance: data.max_dni,
+      "Sun Hours": sunHours,
       date: data.datetime,
       electricity: elec,
+      "Product Location": `${weatherData.city_name}`,
+      country_code: `${weatherData.country_code}`,
     };
     thirtydays.push(electricityResult);
   });
