@@ -39,28 +39,14 @@ const productSchema = new mongoose.Schema(
 
     solarCalculiteResults: [
       {
-        date: {
-          type: String,
-        },
-        solarIrradiance: {
-          type: Number,
-        },
-        panelArea: {
-          type: Number,
-        },
-        sunHours: {
-          type: Number,
-        },
-        electricityProduced: {
-          type: Number,
-        },
+        date: String,
+        solar_irradiance: Number,
+        sun_hours: Number,
+        electricity_produced: Number,
+        product_location: String,
+        country_code: String,
       },
     ],
-
-    // project: {
-    //   type: mongoose.Schema.Types.ObjectId,
-    //   ref: "Project",
-    // },
 
     isReadOnly: {
       type: Boolean,

@@ -15,10 +15,6 @@ router
     projectController.createProject
   );
 
-// .post(upload.array("files"), (req, res) => {
-//   console.log(req.body, req.files);
-// });
-
 router
   .route("/:id")
   .get(authController.isAuthenticatedUser, projectController.showProject)
@@ -28,7 +24,7 @@ router
 router.get(
   "/:id/generateReport",
   authController.isAuthenticatedUser,
-  projectController.generateProjectReport
+  projectController.calcElectricityGeneratedByProject
 );
 
 module.exports = router;

@@ -16,8 +16,4 @@ router
   .route("/profile/delete")
   .get(authController.isAuthenticatedUser, userController.deleteProfile);
 
-router
-  .route("/profile/password/update")
-  .patch(authController.isAuthenticatedUser, userController.updatePassword);
-
 module.exports = router;

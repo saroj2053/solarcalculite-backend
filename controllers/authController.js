@@ -39,7 +39,7 @@ exports.signup = async (req, res) => {
   }
 
   const checkIfUserAlreadyExists = await User.findOne({ email: email });
-  console.log(checkIfUserAlreadyExists);
+
   if (checkIfUserAlreadyExists) {
     return res.status(400).json({
       message: "User already exists. Please login or create new account",
@@ -116,7 +116,6 @@ exports.signin = async (req, res) => {
 };
 
 exports.signout = async (req, res, next) => {
-  console.log(req.cookies);
   try {
     res.cookie("jwt", null, {
       expires: new Date(Date.now()),

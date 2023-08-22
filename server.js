@@ -4,8 +4,6 @@ dotenv.config({ path: "./.env" });
 const colors = require("colors");
 const morgan = require("morgan");
 const cors = require("cors");
-const https = require("https");
-const cron = require("node-cron");
 
 const authRouter = require("./routes/authRoute");
 const userRouter = require("./routes/userRoute");
@@ -29,11 +27,6 @@ app.use(morgan("dev"));
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// app.use((req, res, next) => {
-//   console.log("Middleware function");
-//   next();
-// });
-
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
 app.use("/api/projects", projectRouter);
@@ -43,5 +36,5 @@ app.use("/api/templateProducts", templateProductRouter);
 const PORT = process.env.PORT || 8888;
 
 app.listen(8000, () => {
-  console.log(`Server is running on port ${PORT}`.bgCyan.black);
+  console.log(`Server is running on port ${PORT} 🚀`.bgCyan.black);
 });

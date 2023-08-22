@@ -3,9 +3,15 @@ const { Product } = require("../schemas/ProductSchema");
 const Project = require("../schemas/ProjectSchema");
 const cron = require("node-cron");
 const User = require("../schemas/UserSchema");
-const { dateIntervalsCreation } = require("../helpers/weather");
-const nodemailer = require("nodemailer");
-const createCsvWriter = require("csv-writer").createObjectCsvWriter;
+const fs = require("fs");
+const {
+  dateIntervalsCreation,
+  convertJsonToCsv,
+} = require("../helpers/weather");
+
+const { getEmailService } = require("../helpers/email");
+const { generatePDF } = require("../helpers/jsonTopdfConverter");
+
 require("isomorphic-fetch");
 
 exports.createProduct = async (req, res) => {
@@ -57,18 +63,6 @@ exports.createProduct = async (req, res) => {
 
     const newProduct = await product.save();
 
-    // cron.schedule("0 5 * * *", async () => {
-    //   const weatherResponse = await fetch(
-    //     `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
-    //       product.lon
-    //     }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
-    //       endDate.toISOString().split("T")[0]
-    //     }&key=${process.env.WEATHERBIT_API_KEY}`
-    //   );
-    //   const responseJson = await weatherResponse.json();
-    //   const dataResponse = responseJson.data;
-    // });
-
     const associatedProject = await Project.findById(projectId);
 
     associatedProject.products.push(newProduct._id);
@@ -110,7 +104,6 @@ exports.updateProduct = async (req, res) => {
       lat,
     };
 
-    console.log(newValues);
     const updatedProduct = await Product.findByIdAndUpdate(
       productId,
       newValues,
@@ -150,8 +143,6 @@ exports.deleteProduct = async (req, res) => {
       prd => prd._id.toString() !== productId
     );
 
-    console.log(newProductsList);
-
     const updatedProject = await Project.findByIdAndUpdate(
       retrievedProject._id,
       { products: newProductsList },
@@ -174,7 +165,30 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
-exports.getSingleProductData = async (req, res) => {
+exports.getElectricityGeneratedByProduct = async (req, res) => {
+  const productId = req.params.id;
+  try {
+    const product = await Product.findById(productId);
+    if (product) {
+      res.status(200).json({
+        status: "success",
+        product,
+      });
+    } else {
+      res.status(404).json({
+        status: "fail",
+        message: "Product not found",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+};
+
+exports.calcElectricityGeneratedByProduct = async (req, res) => {
   const productId = req.params.id;
   const userId = req.user.id;
 
@@ -194,88 +208,94 @@ exports.getSingleProductData = async (req, res) => {
   }
 };
 
-const link = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "sarojsaroj390@gmail.com",
-    pass: "jelswsffzvptedwn",
-  },
-});
-
 async function getGeneratedElectricity(prodId, userId) {
   const product = await Product.findById(prodId);
 
   const date_interval = dateIntervalsCreation();
 
-  function isTargetDaysAchieved(productCreatedDate) {
-    let isThirty = false;
-
-    function parseDateString(dateString) {
-      const parts = dateString.split("-");
-      const year = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const day = parseInt(parts[2]);
-      return new Date(year, month, day);
-    }
-    const date_interval = dateIntervalsCreation();
-
-    console.log(date_interval);
-
-    let currentDate = parseDateString(date_interval[1]);
-    console.log(currentDate);
-
-    let createdProductAt = parseDateString(productCreatedDate);
-
-    const differenceInMilliseconds = currentDate - createdProductAt;
-    const differenceInDays = differenceInMilliseconds / (1000 * 60 * 60 * 24);
-
-    console.log(differenceInDays);
-
-    if (differenceInDays === 30) {
-      isThirty = true;
-    }
-    return true;
-  }
-
-  const dateOfProductCreation = product.createdAt;
-
-  const crdate = dateOfProductCreation.toISOString().split("T")[0];
-
-  console.log(crdate);
-
-  // console.log(typeof crdate);
-
-  const dateCheck = isTargetDaysAchieved(crdate);
-  console.log(dateCheck);
-
   const user = await User.find({ _id: userId });
 
-  // for (elem of productlist) {
-  if (dateCheck === true) {
-    // const deactivprod = await Product.updateMany({_id : elem._id},{isactive : false})
-  }
-
-  if (dateCheck === true) {
-    // const deacticproj = await Project.updateMany({_id : proj._id},{isactive:false})
-    sendLast30DaysProjectReports(product, date_interval, user[0].email);
-  }
+  generateLastThirtyDaysProductReport(product, date_interval, user[0].email);
 }
 
-function convertJsonToCsv(jsonArray, filename) {
-  if (!jsonArray.length) {
-    return null;
-  }
+// async function generateLastThirtyDaysProductReport(product, date, email) {
+//   const dataForThirtyDays = [];
 
-  const csvWriter = createCsvWriter({
-    path: filename,
-    header: Object.keys(jsonArray[0]).map(key => ({ id: key, title: key })),
-  });
+//   const startDate = new Date(date[0]);
+//   const endDate = new Date(date[1]);
 
-  return csvWriter.writeRecords(jsonArray);
-}
+//   const weatherResponse = await fetch(
+//     `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${
+//       product.lon
+//     }&start_date=${startDate.toISOString().split("T")[0]}&end_date=${
+//       endDate.toISOString().split("T")[0]
+//     }&key=${process.env.WEATHERBIT_API_KEY}`
+//   );
+//   const res = await weatherResponse.json();
+//   const weatherData = res.data;
 
-async function sendLast30DaysProjectReports(product, date, email) {
-  const thirtydays = [];
+//   weatherData.forEach(data => {
+//     const date_interval = new Date(data.max_temp_ts * 1000);
+//     const sunHours = date_interval.getHours();
+//     const generatedElectricity =
+//       (data.max_dni * product.area * sunHours) / 1000;
+//     const electricityResult = {
+//       solar_irradiance: data.max_dni,
+//       sun_hours: sunHours,
+//       date: data.datetime,
+//       electricity_produced: generatedElectricity,
+//       product_location: `${res.city_name}`,
+//       country_code: `${res.country_code}`,
+//     };
+//     dataForThirtyDays.push(electricityResult);
+//   });
+
+//   const productName = product.productName;
+//   const recipientEmail = email;
+
+//   sendReportToEmail(productName, recipientEmail, dataForThirtyDays);
+
+//   await Product.findByIdAndUpdate(
+//     product._id,
+//     {
+//       isReadOnly: true,
+//       $set: { solarCalculiteResults: dataForThirtyDays },
+//     },
+//     { new: true }
+//   );
+// }
+
+// const sendReportToEmail = (productName, recipientEmail, dataForThirtyDays) => {
+//   let fileName = `data/${productName}.csv`;
+
+//   const csvContent = convertJsonToCsv(dataForThirtyDays, fileName);
+//   const attachment = {
+//     filename: fileName,
+//     path: fileName,
+//     content: csvContent,
+//   };
+
+//   const mailOptions = {
+//     from: "sarojsaroj390@gmail.com",
+//     to: recipientEmail,
+//     subject: `Calculated Energy Produced by the Photo Voltaic Product ${productName}`,
+//     text: "A detail report on energy calculation",
+//     attachments: [attachment],
+//   };
+
+//   const emailLink = getEmailService();
+
+//   emailLink.sendMail(mailOptions, function (err, info) {
+//     if (err) {
+//       console.log(err);
+//     } else {
+//       console.log("Email sent successfully: " + info.response);
+//     }
+//   });
+// };
+
+async function generateLastThirtyDaysProductReport(product, date, email) {
+  const dataForThirtyDays = [];
 
   const startDate = new Date(date[0]);
   const endDate = new Date(date[1]);
@@ -287,51 +307,67 @@ async function sendLast30DaysProjectReports(product, date, email) {
       endDate.toISOString().split("T")[0]
     }&key=${process.env.WEATHERBIT_API_KEY}`
   );
-  const responseJson = await weatherResponse.json();
-  const dataResponse = responseJson.data;
+  const res = await weatherResponse.json();
+  const weatherData = res.data;
+  console.log(weatherData);
 
-  dataResponse.forEach(data => {
+  weatherData.forEach(data => {
     const date_interval = new Date(data.max_temp_ts * 1000);
     const sunHours = date_interval.getHours();
-    const elec = (data.max_dni * product.area * sunHours) / 1000;
+    const generatedElectricity =
+      (data.max_dni * product.area * sunHours) / 1000;
     const electricityResult = {
-      productname: product.productName,
-      irradiance: data.max_dni,
-      "Sun Hours": sunHours,
+      solar_irradiance: data.max_dni,
+      sun_hours: sunHours,
       date: data.datetime,
-      electricity: elec,
-      "Product Location": `${weatherData.city_name}`,
-      country_code: `${weatherData.country_code}`,
+      electricity_produced: generatedElectricity.toFixed(3),
+      product_location: `${res.city_name}`,
+      country_code: `${res.country_code}`,
     };
-    thirtydays.push(electricityResult);
+    dataForThirtyDays.push(electricityResult);
   });
 
-  let filename = `${product.productName}.csv`;
+  const productName = product.productName;
+  const recipientEmail = email;
 
-  const csvContent = convertJsonToCsv(thirtydays, filename);
-  const attachment = {
-    filename: filename,
-    path: filename,
-    content: csvContent,
-  };
+  sendReportToEmail(productName, recipientEmail, dataForThirtyDays);
+
+  await Product.findByIdAndUpdate(
+    product._id,
+    {
+      isReadOnly: true,
+      $set: { solarCalculiteResults: dataForThirtyDays },
+    },
+    { new: true }
+  );
+}
+
+const sendReportToEmail = (productName, recipientEmail, dataForThirtyDays) => {
+  let fileName = `data/${productName}.pdf`;
+
+  const pdfContent = generatePDF(dataForThirtyDays, fileName);
 
   const mailOptions = {
     from: "sarojsaroj390@gmail.com",
-    to: email,
-    subject: `${product.productName} electricity generation reports`,
-    text: "Sending this email after generating the report",
-    attachments: [attachment],
+    to: recipientEmail,
+    subject: `Calculated Energy Produced by the Photo Voltaic Product ${productName}`,
+    text: "A detailed report on energy calculation",
+    attachments: [
+      {
+        filename: fileName,
+        path: pdfContent,
+        contentType: "application/pdf",
+      },
+    ],
   };
 
-  link.sendMail(mailOptions, function (err, info) {
-    if (err) {
+  const emailLink = getEmailService();
+
+  emailLink.sendMail(mailOptions, function (error, result) {
+    if (error) {
       console.log(err);
     } else {
-      console.log("Email sent: " + info.response);
+      console.log("Email sent successfully: " + result.response);
     }
   });
-
-  await Product.findByIdAndUpdate(product._id, {
-    isReadOnly: true,
-  });
-}
+};

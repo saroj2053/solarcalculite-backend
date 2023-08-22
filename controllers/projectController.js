@@ -2,7 +2,14 @@ const Project = require("../schemas/ProjectSchema");
 const { cloudinary } = require("../cloudinary/index");
 const { Product, Template } = require("../schemas/ProductSchema");
 const User = require("../schemas/UserSchema");
-const { dateIntervalsCreation } = require("../helpers/weather");
+
+const {
+  dateIntervalsCreation,
+  convertJsonToCsv,
+} = require("../helpers/weather");
+
+const { getEmailService } = require("../helpers/email");
+
 const nodemailer = require("nodemailer");
 const createCsvWriter = require("csv-writer").createObjectCsvWriter;
 require("isomorphic-fetch");
@@ -155,106 +162,44 @@ exports.deleteProject = async (req, res) => {
   }
 };
 
-exports.generateProjectReport = () => {
-  popcorn();
-  console.log("popcorn called");
-};
+exports.calcElectricityGeneratedByProject = async (req, res) => {
+  const existingProject = await Project.findById(req.params.id);
 
-const link = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: "sarojsaroj390@gmail.com",
-    pass: "jelswsffzvptedwn",
-  },
-});
+  const user = await User.find({ _id: existingProject.author });
 
-async function popcorn() {
-  const cdate = dateIntervalsCreation();
-  function isThirty(productCreatedDate) {
-    let isThirty = false;
-    const cdate = dateIntervalsCreation();
+  const listOfProducts = await Project.find(
+    { _id: existingProject._id, isActive: true },
+    { projection: { products: 1 } }
+  ).populate("products");
 
-    console.log(cdate);
-    let currentDate = new Date(cdate[0]);
-    const prodDate = new Date(productCreatedDate);
+  let productlist = [...listOfProducts[0].products];
 
-    const differenceInDates = prodDate.getTime() - currentDate.getTime() + 1;
-
-    console.log(differenceInDates);
-
-    const daysDiff = Math.floor(differenceInDates / (1000 * 60 * 60 * 24));
-    console.log(daysDiff);
-
-    if (daysDiff === 30) {
-      isThirty = true;
-    }
-    return true;
-  }
-
-  const projectlist = await Project.find({ isActive: true });
-
-  async function processProject(proj) {
-    const dateOfProjectCreation = proj.createdAt;
-
-    const crdate = dateOfProjectCreation.toISOString().split("T")[0];
-
-    // console.log(typeof crdate);
-
-    const datechk = isThirty(crdate);
-
-    console.log("datechk", datechk);
-
-    const user = await User.find({ _id: proj.author });
-    console.log(user);
-
-    const prodidlist = await Project.find(
-      { _id: proj._id, isActive: true },
-      { projection: { products: 1 } }
-    ).populate("products");
-
-    let productlist = [...prodidlist[0].products];
-    const activeProducts = productlist.filter(product => {
-      return product.isReadOnly !== true;
-    });
-
-    console.log(activeProducts);
-
-    // for (elem of productlist) {
-    if (datechk === true) {
-      // const deactivprod = await Product.updateMany({_id : elem._id},{isactive : false})
-    }
-
-    if (datechk === true) {
-      // const deacticproj = await Project.updateMany({_id : proj._id},{isactive:false})
-      sendLast30DaysProjectReports(proj, activeProducts, cdate, user[0].email);
-    }
-  }
-
-  async function processProjects() {
-    for (const proj of projectlist) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      await processProject(proj);
-    }
-  }
-
-  processProjects();
-}
-
-function convertJsonToCsv(jsonArray, filename) {
-  if (!jsonArray.length) {
-    return null;
-  }
-
-  const csvWriter = createCsvWriter({
-    path: filename,
-    header: Object.keys(jsonArray[0]).map(key => ({ id: key, title: key })),
+  const activeProducts = productlist.filter(product => {
+    return product.isReadOnly !== true;
   });
 
-  return csvWriter.writeRecords(jsonArray);
-}
+  const cdate = dateIntervalsCreation();
+  try {
+    generateReportForLast30Days(
+      existingProject,
+      activeProducts,
+      cdate,
+      user[0].email
+    );
 
-async function sendLast30DaysProjectReports(
+    res.status(200).json({
+      status: "success",
+      message: "Successfully generated report for a project",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: error.stack,
+    });
+  }
+};
+
+async function generateReportForLast30Days(
   project,
   activeProductList,
   date,
@@ -264,41 +209,44 @@ async function sendLast30DaysProjectReports(
 
   let csvpaths = [];
   for (let product of activeProductList) {
-    const thirtydays = [];
-    // const endDate = new Date(date[0]); // Current date
-    // const startDate = new Date(date[0]); // Start with the current date
-    // startDate.setDate(startDate.getDate() - 30); // Subtract 30 days
-
-    // const startDateISO = startDate.toISOString().split("T")[0];
-    // const endDateISO = endDate.toISOString().split("T")[0];
+    const dataForThirtyDays = [];
 
     const weatherResponse = await fetch(
       `https://api.weatherbit.io/v2.0/history/daily?&lat=${product.lat}&lon=${product.lon}&start_date=${date[0]}&end_date=${date[1]}&key=${process.env.WEATHERBIT_API_KEY}`
     );
     const weatherData = await weatherResponse.json();
     const dailyData = weatherData.data;
-    console.log(dailyData);
 
     for (const data of dailyData) {
       const cdate = new Date(data.max_temp_ts * 1000);
       const sunHours = cdate.getHours();
-      const elec = (data.max_dni * product.area * sunHours) / 1000;
+      const generatedElectricity =
+        (data.max_dni * product.area * sunHours) / 1000;
       const electricityResult = {
-        productname: product.productName,
-        irradiance: data.max_dni,
-        "Sun Hours": sunHours,
+        solar_irradiance: data.max_dni,
+        sun_hours: sunHours,
         date: data.datetime,
-        electricity: elec,
-        "Product Location": `${weatherData.city_name}`,
+        electricity_produced: generatedElectricity.toFixed(3),
+        product_location: `${weatherData.city_name}`,
         country_code: `${weatherData.country_code}`,
       };
-      thirtydays.push(electricityResult);
+      dataForThirtyDays.push(electricityResult);
     }
 
-    let filename = `${product.productName}.csv`;
+    let filename = `data/${product.productName}.csv`;
 
-    const csvarr = convertJsonToCsv(thirtydays, filename);
+    const csvarr = convertJsonToCsv(dataForThirtyDays, filename);
     csvpaths.push(filename);
+
+    //TODO:
+    // stored the dataForThirtyDays result into the product data schema
+    await Product.findByIdAndUpdate(
+      product._id,
+      { isReadOnly: true, $set: { solarCalculiteResults: dataForThirtyDays } },
+      { new: true }
+    );
+    //set the product status to readonly using the updateOne function since the products are in the loop
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   const attachments = [];
@@ -324,11 +272,15 @@ async function sendLast30DaysProjectReports(
     attachments: attachments,
   };
 
-  link.sendMail(mailOptions, function (err, info) {
+  const emailLink = getEmailService();
+
+  emailLink.sendMail(mailOptions, function (err, info) {
     if (err) {
       console.log(err);
     } else {
-      console.log("email sent" + info.response);
+      console.log("email sent successfully" + info.response);
     }
   });
+
+  await Project.updateOne({ _id: project._id }, { isActive: false });
 }

@@ -13,7 +13,9 @@ router.put("/:id", productController.updateProduct);
 router.get(
   "/:id",
   authController.isAuthenticatedUser,
-  productController.getSingleProductData
+  productController.calcElectricityGeneratedByProduct
 );
+
+router.get("/:id/report", productController.getElectricityGeneratedByProduct);
 
 module.exports = router;

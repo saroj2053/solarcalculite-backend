@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const colors = require("colors");
 
 const DB = process.env.DATABASE.replace(
   "<PASSWORD>",
