@@ -13,7 +13,7 @@ const templateProductRouter = require("./routes/templateRoute");
 
 const corsOptions = {
   credentials: true,
-  origin: ["https://main--solar-calculite.netlify.app"],
+  origin: ["https://solar-calculite.netlify.app"],
 };
 
 const app = express();
