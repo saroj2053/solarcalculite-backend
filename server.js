@@ -13,7 +13,7 @@ const templateProductRouter = require("./routes/templateRoute");
 
 const corsOptions = {
   credentials: true,
-  origin: ["https://solar-calculite.netlify.app"],
+  origin: ["https://solar-calculite.netlify.app", "http://localhost:3001"],
 };
 
 const app = express();
@@ -35,6 +35,6 @@ app.use("/api/templateProducts", templateProductRouter);
 
 const PORT = process.env.PORT || 8888;
 
-app.listen(8000, () => {
+app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT} 🚀`.bgCyan.black);
 });
